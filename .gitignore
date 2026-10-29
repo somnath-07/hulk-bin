@@ -1,0 +1,11 @@
+# Build output
+HulkBin.app/
+
+# Generated preview contact sheet
+preview.png
+
+# Runtime logs
+run.log
+*.log
+
+.DS_Store
