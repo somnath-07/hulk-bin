@@ -2,6 +2,11 @@
 
 A pixel-art Hulk stands on your Dock's Trash tile. Drop a file in and he smashes it.
 
+<img src="demo.gif" width="264" alt="The Hulk idling on a Dock, asking for something to smash, then slamming a dropped file into pixel debris">
+
+*(That GIF is rendered by the app itself — `--gif`, no screen recording. The Dock around him is a
+stand-in drawn into the same scene.)*
+
 He's drawn as a 16-bit sprite: full standing figure, slab arms with a bright rim light down each
 outer edge, square jaw under a heavy brow, clenched teeth, shaggy mane, torn denim shorts. His legs
 and shorts cover the bin behind him, so you see the Hulk rather than the Trash can.
@@ -60,10 +65,11 @@ A synthesised bass thump plays on each impact (toggle in the menu).
 ./build.sh
 ```
 
-Render the contact sheet of key frames:
+Render the art offline — neither of these needs the Dock, a window, or Accessibility permission:
 
 ```bash
-./HulkBin.app/Contents/MacOS/HulkBin --preview preview.png
+./HulkBin.app/Contents/MacOS/HulkBin --preview preview.png   # contact sheet of key frames
+./HulkBin.app/Contents/MacOS/HulkBin --gif demo.gif          # the whole beat, looping
 ```
 
 ## Sizing and Dock magnification

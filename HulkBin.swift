@@ -7,7 +7,10 @@
 //  • Watches global mouse events + the drag pasteboard to know when files are dragged towards the Trash,
 //    and confirms a drop by checking the dragged files have left their original location.
 //
-// Build:  ./build.sh        Preview contact sheet:  HulkBin.app/Contents/MacOS/HulkBin --preview out.png
+// Build:  ./build.sh
+// Offline renders (no Dock or permissions needed):
+//   HulkBin.app/Contents/MacOS/HulkBin --preview out.png     contact sheet of key frames
+//   HulkBin.app/Contents/MacOS/HulkBin --gif demo.gif        the whole beat as a looping GIF
 
 import AppKit
 import ApplicationServices
@@ -1158,6 +1161,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
 // MARK: - Preview (contact sheet of key frames, no window needed)
 
+/// A stand-in Dock for the offline renders: gradient wallpaper, the shelf, a neighbouring
+/// icon and the Trash tile the Hulk stands in front of.
+func drawMockDock(_ cv: Canvas) {
+    cv.clear(); cv.ox = 0; cv.oy = 0
+    for y in 0..<ART_H { for x in 0..<ART_W {
+        let g = UInt32(0x30 + y / 4)
+        cv.px[(ART_H - 1 - y) * ART_W + x] = rgb((g - 8) << 16 | g << 8 | (g + 40))
+    } }
+    cv.rect(0, 0, ART_W, 2, rgb(0x8A92A3)); cv.rect(0, 1, ART_W, 1, rgb(0xB6BDCB))
+    cv.rrect(CX - 50, 2, CX - 26, 26, 3, Style(fill: rgb(0x3D7BD6), shadow: rgb(0x2A57A0), edge: rgb(0x16315E)))
+    cv.rrect(CX + 26, 2, CX + 50, 26, 3, Style(fill: rgb(0xD6673D), shadow: rgb(0xA0452A), edge: rgb(0x5E2416)))
+    let binS = Style(fill: rgb(0xC9CCD2), shadow: rgb(0x9A9EA8), light: rgb(0xE6E8EC), edge: rgb(0x6B707B))
+    cv.shape(CX - 12, 2, CX + 12, 25, binS, sd: 2) { x, y in
+        if y > 23 { return false }
+        return abs(x - CX) <= lerp(8.5, 10.5, clamp((y - 2) / 21))
+    }
+    cv.rrect(CX - 11.5, 23, CX + 11.5, 25.5, 1.2, binS)
+}
+
+/// Renders the whole beat — idle, hover, smash, settle — to a looping animated GIF.
+/// Written straight through ImageIO, so it needs no ffmpeg or other tooling.
+func runGIF(_ path: String, scale: Int = 2) {
+    let sc = HulkScene()
+    let cv = Canvas(ART_W, ART_H)
+    let fps = 30, dt = 1.0 / 60
+    var frames: [CGImage] = []
+    var hoverTarget = 0.0
+    let mouse = V(x: 110, y: 50)
+
+    /// Advances the scene to `t`, capturing every second tick so the GIF runs at 30fps.
+    func run(to t: Double) {
+        var tick = frames.count * 2
+        while sc.time < t {
+            sc.update(dt, mouse: mouse, hoverTarget: hoverTarget)
+            tick += 1
+            if tick % 2 == 0 {
+                drawMockDock(cv)
+                sc.render(into: cv, clear: false)
+                frames.append(cv.cgImage(scale: scale))
+            }
+        }
+    }
+
+    run(to: 0.6)                                  // idle breathing
+    hoverTarget = 1; run(to: 2.0)                 // a file comes near: fists up, speech bubble
+    hoverTarget = 0
+    sc.smash(sprites: [fakeDocSprite()], from: V(x: 16, y: 56))
+    run(to: 4.3)                                  // slam, debris, chest pound, back to idle
+
+    let url = URL(fileURLWithPath: path)
+    let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, frames.count, nil)!
+    CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary:
+        [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+    let frameProps = [kCGImagePropertyGIFDictionary: [
+        kCGImagePropertyGIFDelayTime: 1.0 / Double(fps),
+        kCGImagePropertyGIFUnclampedDelayTime: 1.0 / Double(fps),
+    ]] as CFDictionary
+    for f in frames { CGImageDestinationAddImage(dest, f, frameProps) }
+    CGImageDestinationFinalize(dest)
+    print("wrote \(path) — \(frames.count) frames at \(ART_W * scale)×\(ART_H * scale)")
+}
+
 func runPreview(_ path: String) {
     let sc = HulkScene()
     let cv = Canvas(ART_W, ART_H)
@@ -1167,20 +1232,7 @@ func runPreview(_ path: String) {
 
     func step(to t: Double) { while sc.time < t { sc.update(1.0 / 60, mouse: mouse, hoverTarget: hoverTarget) } }
     func snap() {
-        cv.clear(); cv.ox = 0; cv.oy = 0
-        for y in 0..<ART_H { for x in 0..<ART_W {
-            let g = UInt32(0x30 + y / 4)
-            cv.px[(ART_H - 1 - y) * ART_W + x] = rgb((g - 8) << 16 | g << 8 | (g + 40))
-        } }
-        // mock Dock shelf with a neighbouring icon and the Trash tile the Hulk stands over
-        cv.rect(0, 0, ART_W, 2, rgb(0x8A92A3)); cv.rect(0, 1, ART_W, 1, rgb(0xB6BDCB))
-        cv.rrect(CX - 48, 2, CX - 24, 26, 3, Style(fill: rgb(0x3D7BD6), shadow: rgb(0x2A57A0), edge: rgb(0x16315E)))
-        let binS = Style(fill: rgb(0xC9CCD2), shadow: rgb(0x9A9EA8), light: rgb(0xE6E8EC), edge: rgb(0x6B707B))
-        cv.shape(CX - 12, 2, CX + 12, 25, binS, sd: 2) { x, y in
-            if y > 23 { return false }
-            return abs(x - CX) <= lerp(8.5, 10.5, clamp((y - 2) / 21))
-        }
-        cv.rrect(CX - 11.5, 23, CX + 11.5, 25.5, 1.2, binS)
+        drawMockDock(cv)
         sc.render(into: cv, clear: false)
         tiles.append(cv.cgImage())
     }
@@ -1212,6 +1264,10 @@ func runPreview(_ path: String) {
 let args = CommandLine.arguments
 if let i = args.firstIndex(of: "--preview") {
     runPreview(i + 1 < args.count ? args[i + 1] : "preview.png")
+    exit(0)
+}
+if let i = args.firstIndex(of: "--gif") {
+    runGIF(i + 1 < args.count && !args[i + 1].hasPrefix("--") ? args[i + 1] : "demo.gif")
     exit(0)
 }
 let app = NSApplication.shared
